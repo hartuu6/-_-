@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>분자 구성 앱</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            touch-action: manipulation;
+            user-select: none;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: #f0f4f8;
+            color: #333;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            position: relative;
+        }
+        
+        .atom-bar {
+            background-color: #ffffff;
+            padding: 10px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow-x: auto;
+            white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+            height: 100px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .atom-bar::-webkit-scrollbar {
+            display: none;
+        }
+        
+        .atom {
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            margin: 0 8px;
+            font-weight: bold;
+            font-size: 16px;
+            cursor: pointer;
+            touch-action: none;
+            position: relative;
+        }
+        
+        .atom p {
+            font-size: 12px;
+            margin-top: 2px;
+            text-align: center;
+        }
+        
+        .workspace {
+            flex: 1;
+            position: relative;
+            background-color: #f0f4f8;
+            overflow: hidden;
+            touch-action: none;
+        }
+        
+        .workspace-atom {
+            position: absolute;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            font-weight: bold;
+            cursor: pointer;
+            touch-action: none;
+            z-index: 10;
+        }
+        
+        .bond {
+            position: absolute;
+            background-color: #555;
+            height: 5px;
+            transform-origin: left center;
+            z-index: 1;
+        }
+        
+        .info-panel {
+            position: absolute;
+            top: 110px;
+            right: 0;
+            width: 120px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 10px 0 0 10px;
+            padding: 15px;
+            box-shadow: -2px 2px 10px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        
+        .info-panel h3 {
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .info-item {
+            margin-bottom: 15px;
+        }
+        
+        .info-item label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        .info-item input {
+            width: 100%;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        .formula {
+            font-weight: bold;
+            margin-top: 10px;
+            word-break: break-all;
+            font-size: 12px;
+        }
+        
+        .trash {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 0, 0, 0.1);
+            border: 2px dashed #ff6b6b;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #ff6b6b;
+            font-size: 24px;
+            z-index: 100;
+        }
+        
+        .trash.active {
+            background-color: rgba(255, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="atom-bar" id="atomBar">
+            <!-- 원자들은 자바스크립트로 동적 생성 -->
+        </div>
+        
+        <div class="workspace" id="workspace">
+            <!-- 드래그된 원자들이 위치할 영역 -->
+        </div>
+        
+        <div class="info-panel">
+            <h3>분자 정보</h3>
+            <div class="info-item">
+                <label for="molWeight">화학식량:</label>
+                <div id="molWeight">0 g/mol</div>
+            </div>
+            <div class="info-item">
+                <label for="molInput">몰 수:</label>
+                <input type="number" id="molInput" value="1" min="0.001" step="0.001">
+            </div>
+            <div class="info-item">
+                <label for="totalWeight">총 질량:</label>
+                <div id="totalWeight">0 g</div>
+            </div>
+            <div class="formula" id="formula"></div>
+        </div>
+        
+        <div class="trash" id="trash">
+            <span>🗑️</span>
+        </div>
+    </div>
+    
+    <script>
+        // 원자 데이터 (원소 기호, 이름, 원자량, 색상)
+        const atoms = [
+            { symbol: 'H', name: '수소', mass: 1.008, color: '#CCCCCC' },
+            { symbol: 'He', name: '헬륨', mass: 4.003, color: '#D9FFFF' },
+            { symbol: 'Li', name: '리튬', mass: 6.941, color: '#CC80FF' },
+            { symbol: 'Be', name: '베릴륨', mass: 9.012, color: '#C2FF00' },
+            { symbol: 'B', name: '붕소', mass: 10.811, color: '#FFB5B5' },
+            { symbol: 'C', name: '탄소', mass: 12.011, color: '#909090' },
+            { symbol: 'N', name: '질소', mass: 14.007, color: '#3050F8' },
+            { symbol: 'O', name: '산소', mass: 15.999, color: '#FF0D0D' },
+            { symbol: 'F', name: '플루오린', mass: 18.998, color: '#90E050' },
+            { symbol: 'Ne', name: '네온', mass: 20.180, color: '#B3E3F5' },
+            { symbol: 'Na', name: '나트륨', mass: 22.990, color: '#AB5CF2' },
+            { symbol: 'Mg', name: '마그네슘', mass: 24.305, color: '#8AFF00' },
+            { symbol: 'Al', name: '알루미늄', mass: 26.982, color: '#BFA6A6' },
+            { symbol: 'Si', name: '규소', mass: 28.086, color: '#F0C8A0' },
+            { symbol: 'P', name: '인', mass: 30.974, color: '#FF8000' },
+            { symbol: 'S', name: '황', mass: 32.065, color: '#FFFF30' },
+            { symbol: 'Cl', name: '염소', mass: 35.453, color: '#1FF01F' },
+            { symbol: 'Ar', name: '아르곤', mass: 39.948, color: '#80D1E3' },
+            { symbol: 'K', name: '칼륨', mass: 39.098, color: '#8F40D4' },
+            { symbol: 'Ca', name: '칼슘', mass: 40.078, color: '#3DFF00' },
+            { symbol: 'Fe', name: '철', mass: 55.845, color: '#E06633' },
+            { symbol: 'Cu', name: '구리', mass: 63.546, color: '#C88033' },
+            { symbol: 'Zn', name: '아연', mass: 65.38, color: '#7D80B0' },
+            { symbol: 'Ag', name: '은', mass: 107.868, color: '#C0C0C0' },
+            { symbol: 'Au', name: '금', mass: 196.967, color: '#FFD123' },
+            { symbol: 'Hg', name: '수은', mass: 200.59, color: '#B8B8D0' },
+            { symbol: 'Pb', name: '납', mass: 207.2, color: '#575961' }
+        ];
+        
+        // 현재 분자를 구성하는 원자들
+        let workspaceAtoms = [];
+        // 원자들 사이의 결합
+        let bonds = [];
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const atomBar = document.getElementById('atomBar');
+            const workspace = document.getElementById('workspace');
+            const molWeight = document.getElementById('molWeight');
+            const molInput = document.getElementById('molInput');
+            const totalWeight = document.getElementById('totalWeight');
+            const formula = document.getElementById('formula');
+            const trash = document.getElementById('trash');
+            
+            // 원자 바에 원자 추가
+            atoms.forEach(atom => {
+                const atomElem = document.createElement('div');
+                atomElem.className = 'atom';
+                atomElem.style.backgroundColor = atom.color;
+                atomElem.innerHTML = `<div>${atom.symbol}<p>${atom.name}</p></div>`;
+                atomElem.dataset.symbol = atom.symbol;
+                atomElem.dataset.mass = atom.mass;
+                atomElem.dataset.color = atom.color;
+                
+                // 터치 이벤트로 드래그 시작
+                atomElem.addEventListener('touchstart', startDragFromBar);
+                
+                atomBar.appendChild(atomElem);
+            });
+            
+            // 몰 수 변경 이벤트
+            molInput.addEventListener('input', updateTotalWeight);
+            
+            // 드래그 시작 (원자 바에서)
+            function startDragFromBar(e) {
+                e.preventDefault();
+                
+                const touch = e.touches[0];
+                const atomElem = e.currentTarget;
+                const atom = {
+                    symbol: atomElem.dataset.symbol,
+                    mass: parseFloat(atomElem.dataset.mass),
+                    color: atomElem.dataset.color
+                };
+                
+                // 새 원자 생성하여 워크스페이스에 추가
+                const newAtom = document.createElement('div');
+                newAtom.className = 'workspace-atom';
+                newAtom.style.backgroundColor = atom.color;
+                newAtom.textContent = atom.symbol;
+                newAtom.dataset.symbol = atom.symbol;
+                newAtom.dataset.mass = atom.mass;
+                newAtom.dataset.color = atom.color;
+                newAtom.dataset.id = Date.now(); // 고유 ID 부여
+                
+                // 원자 위치 설정
+                const rect = workspace.getBoundingClientRect();
+                const x = touch.clientX - rect.left - 25; // 중앙에 위치
+                const y = touch.clientY - rect.top - 25;
+                
+                newAtom.style.left = `${x}px`;
+                newAtom.style.top = `${y}px`;
+                workspace.appendChild(newAtom);
+                
+                // 워크스페이스 원자 배열에 추가
+                workspaceAtoms.push({
+                    id: newAtom.dataset.id,
+                    symbol: atom.symbol,
+                    mass: atom.mass,
+                    element: newAtom,
+                    x: x + 25, // 중심점 좌표
+                    y: y + 25
+                });
+                
+                // 새 원자에 대한 이벤트 리스너 설정
+                newAtom.addEventListener('touchstart', startDragInWorkspace);
+                
+                // 드래그 시작
+                moveAtom(e, newAtom);
+                updateMoleculeInfo();
+            }
+            
+            // 워크스페이스 내에서 드래그 시작
+            function startDragInWorkspace(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const atom = e.currentTarget;
+                moveAtom(e, atom);
+            }
+            
+            // 원자 이동 함수
+            function moveAtom(startEvent, atom) {
+                const rect = workspace.getBoundingClientRect();
+                const atomRect = atom.getBoundingClientRect();
+                const atomRadius = atomRect.width / 2;
+                
+                // 초기 터치 위치와 원자 위치 차이 계산
+                const touch = startEvent.touches[0];
+                const offsetX = touch.clientX - atomRect.left - atomRadius;
+                const offsetY = touch.clientY - atomRect.top - atomRadius;
+                
+                // 드래그 중
+                function onTouchMove(e) {
+                    const touch = e.touches[0];
+                    
+                    // 새 위치 계산
+                    let x = touch.clientX - rect.left - offsetX - atomRadius;
+                    let y = touch.clientY - rect.top - offsetY - atomRadius;
+                    
+                    // 경계 내에 있도록 제한
+                    x = Math.max(0, Math.min(rect.width - atomRect.width, x));
+                    y = Math.max(0, Math.min(rect.height - atomRect.height, y));
+                    
+                    // 원자 위치 업데이트
+                    atom.style.left = `${x}px`;
+                    atom.style.top = `${y}px`;
+                    
+                    // 워크스페이스 원자 배열에서 위치 업데이트
+                    const atomObj = workspaceAtoms.find(a => a.id === atom.dataset.id);
+                    if (atomObj) {
+                        atomObj.x = x + atomRadius;
+                        atomObj.y = y + atomRadius;
+                    }
+                    
+                    // 쓰레기통 활성화 확인
+                    const trashRect = trash.getBoundingClientRect();
+                    if (
+                        touch.clientX >= trashRect.left &&
+                        touch.clientX <= trashRect.right &&
+                        touch.clientY >= trashRect.top &&
+                        touch.clientY <= trashRect.bottom
+                    ) {
+                        trash.classList.add('active');
+                    } else {
+                        trash.classList.remove('active');
+                    }
+                    
+                    // 다른 원자와의 거리 확인하여 결합 생성
+                    updateBonds();
+                }
+                
+                // 드래그 종료
+                function onTouchEnd(e) {
+                    // 쓰레기통에 있는지 확인
+                    const touch = e.changedTouches[0];
+                    const trashRect = trash.getBoundingClientRect();
+                    
+                    if (
+                        touch.clientX >= trashRect.left &&
+                        touch.clientX <= trashRect.right &&
+                        touch.clientY >= trashRect.top &&
+                        touch.clientY <= trashRect.bottom
+                    ) {
+                        // 원자 제거
+                        workspace.removeChild(atom);
+                        
+                        // 관련 결합 제거
+                        const relatedBonds = bonds.filter(bond => 
+                            bond.atom1.id === atom.dataset.id || 
+                            bond.atom2.id === atom.dataset.id
+                        );
+                        
+                        relatedBonds.forEach(bond => {
+                            if (bond.element && bond.element.parentNode) {
+                                workspace.removeChild(bond.element);
+                            }
+                        });
+                        
+                        // 배열에서 제거
+                        bonds = bonds.filter(bond => 
+                            bond.atom1.id !== atom.dataset.id && 
+                            bond.atom2.id !== atom.dataset.id
+                        );
+                        
+                        workspaceAtoms = workspaceAtoms.filter(a => a.id !== atom.dataset.id);
+                        
+                        trash.classList.remove('active');
+                    }
+                    
+                    document.removeEventListener('touchmove', onTouchMove);
+                    document.removeEventListener('touchend', onTouchEnd);
+                    
+                    updateMoleculeInfo();
+                }
+                
+                document.addEventListener('touchmove', onTouchMove, { passive: false });
+                document.addEventListener('touchend', onTouchEnd);
+            }
+            
+            // 결합 업데이트
+            function updateBonds() {
+                // 기존 결합 요소 제거
+                bonds.forEach(bond => {
+                    if (bond.element && bond.element.parentNode) {
+                        workspace.removeChild(bond.element);
+                    }
+                });
+                
+                // 결합 배열 초기화
+                bonds = [];
+                
+                // 모든 원자 쌍을 체크하여 결합 생성
+                for (let i = 0; i < workspaceAtoms.length; i++) {
+                    for (let j = i + 1; j < workspaceAtoms.length; j++) {
+                        const atom1 = workspaceAtoms[i];
+                        const atom2 = workspaceAtoms[j];
+                        
+                        // 두 원자 사이의 거리 계산
+                        const dx = atom2.x - atom1.x;
+                        const dy = atom2.y - atom1.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        // 거리가 60px 이하면 결합 생성
+                        if (distance <= 60) {
+                            // 결합 요소 생성
+                            const bondElem = document.createElement('div');
+                            bondElem.className = 'bond';
+                            
+                            // 결합 위치 및 길이 설정
+                            bondElem.style.left = `${atom1.x}px`;
+                            bondElem.style.top = `${atom1.y}px`;
+                            bondElem.style.width = `${distance}px`;
+                            
+                            // 결합 각도 계산
+                            const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+                            bondElem.style.transform = `rotate(${angle}deg)`;
+                            
+                            workspace.appendChild(bondElem);
+                            
+                            // 결합 정보 저장
+                            bonds.push({
+                                atom1: atom1,
+                                atom2: atom2,
+                                element: bondElem
+                            });
+                        }
+                    }
+                }
+            }
+            
+            // 분자 정보 업데이트
+            function updateMoleculeInfo() {
+                // 각 원소별 개수 계산
+                const elementCounts = {};
+                workspaceAtoms.forEach(atom => {
+                    if (elementCounts[atom.symbol]) {
+                        elementCounts[atom.symbol]++;
+                    } else {
+                        elementCounts[atom.symbol] = 1;
+                    }
+                });
+                
+                // 화학식 생성
+                let formulaText = '';
+                // 원소를 기호 순으로 정렬하되, C와 H를 먼저 표시
+                const sortedElements = Object.keys(elementCounts).sort((a, b) => {
+                    if (a === 'C') return -1;
+                    if (b === 'C') return 1;
+                    if (a === 'H') return -1;
+                    if (b === 'H') return 1;
+                    return a.localeCompare(b);
+                });
+                
+                sortedElements.forEach(element => {
+                    formulaText += element;
+                    if (elementCounts[element] > 1) {
+                        formulaText += `<sub>${elementCounts[element]}</sub>`;
+                    }
+                });
+                
+                // 분자량 계산
+                let totalMass = 0;
+                workspaceAtoms.forEach(atom => {
+                    totalMass += atom.mass;
+                });
+                
+                // 화면 업데이트
+                molWeight.textContent = `${totalMass.toFixed(3)} g/mol`;
+                formula.innerHTML = formulaText;
+                
+                updateTotalWeight();
+            }
+            
+            // 총 질량 업데이트
+            function updateTotalWeight() {
+                const moles = parseFloat(molInput.value) || 0;
+                const mass = parseFloat(molWeight.textContent) || 0;
+                const total = moles * mass;
+                
+                totalWeight.textContent = `${total.toFixed(3)} g`;
+            }
+        });
+    </script>
+</body>
+</html>
